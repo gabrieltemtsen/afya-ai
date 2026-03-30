@@ -55,6 +55,7 @@ async def health():
     return {
         "status": "ok",
         "key_set": bool(GEMINI_API_KEY),
+        "enable_live": ENABLE_LIVE,
         "models": {"live": MODEL_LIVE, "text": MODEL_TEXT, "tts": MODEL_TTS},
     }
 
@@ -81,8 +82,21 @@ async def chat_api(payload: dict = Body(...)):
     return {"text": reply_text, **tts}
 
 
+ENABLE_LIVE = os.environ.get("ENABLE_LIVE", "false").lower() == "true"
+
+
 @app.websocket("/ws/voice")
 async def voice_ws(websocket: WebSocket):
+    # Live mode is currently unstable (preview endpoints). Keep disabled by default.
+    if not ENABLE_LIVE:
+        await websocket.accept()
+        await websocket.send_text(json.dumps({
+            "type": "error",
+            "message": "Realtime voice is temporarily disabled. Please refresh and use Stable Voice Mode.",
+        }))
+        await websocket.close()
+        return
+
     await websocket.accept()
     log.info("New voice session")
 
