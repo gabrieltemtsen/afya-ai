@@ -53,7 +53,7 @@
     <h1>AfyaAI</h1>
     <p>Voice → Voice health triage</p>
   </div>
-  <div class="pill"><div class="dot ready" id="dot"></div><span id="stxt">Ready</span></div>
+  <div class="pill"><div class="dot ready" id="dot"></div><span id="stxt">Ready</span><span id="langBadge" style="margin-left:6px;color:var(--muted2)"></span></div>
 </header>
 
 <main>
@@ -78,10 +78,20 @@
     </div>
 
     <div class="status" id="status">Hold to talk</div>
+    <div class="status" id="aiAnim" style="display:none">
+      <span style="display:inline-flex;gap:4px;align-items:center">
+        <span style="width:6px;height:6px;border-radius:999px;background:var(--green);opacity:.6;animation:dot 1.2s infinite"></span>
+        <span style="width:6px;height:6px;border-radius:999px;background:var(--green);opacity:.6;animation:dot 1.2s .2s infinite"></span>
+        <span style="width:6px;height:6px;border-radius:999px;background:var(--green);opacity:.6;animation:dot 1.2s .4s infinite"></span>
+        <span style="margin-left:6px;color:var(--muted)">AfyaAI responding…</span>
+      </span>
+    </div>
   </div>
 
   <audio id="player" controls></audio>
 </main>
+
+<style>@keyframes dot{0%,100%{transform:translateY(0);opacity:.4}50%{transform:translateY(-4px);opacity:1}}</style>
 
 <div class="toast" id="toast"></div>
 
@@ -95,6 +105,18 @@ const dot = document.getElementById('dot');
 const stxt = document.getElementById('stxt');
 const lang = document.getElementById('lang');
 const toast = document.getElementById('toast');
+const aiAnim = document.getElementById('aiAnim');
+const langBadge = document.getElementById('langBadge');
+
+// lightweight localStorage context
+const HISTORY_KEY = 'afya_voice_history_v1';
+function loadHistory(){
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') || []; } catch { return []; }
+}
+function saveHistory(h){
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(h.slice(-12))); } catch {}
+}
+
 
 let recorder=null, chunks=[], stream=null;
 let holding=false;
@@ -157,19 +179,34 @@ async function stopRec(){
 
   const b64 = await blobToBase64(blob);
 
+  aiAnim.style.display='block';
+
+  const history = loadHistory();
   const resp = await fetch('/api/voice', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ audio_b64: b64, mime_type: blob.type, lang_hint: lang.value })
+    body: JSON.stringify({ audio_b64: b64, mime_type: blob.type, lang_hint: lang.value, history })
   });
 
   const data = await resp.json();
+  aiAnim.style.display='none';
   if(data.error){
+    aiAnim.style.display='none';
     setTop('ready','Error');
     setStatus('Error: ' + data.error);
     showToast('Error: ' + data.error);
     return;
   }
+
+  if(data.detected_language){
+    langBadge.textContent = `· ${data.detected_language}`;
+  }
+
+  // save context (we don't show chat, but we remember it)
+  const history2 = loadHistory();
+  history2.push({ role:'user', text:'(voice message)' });
+  history2.push({ role:'assistant', text: data.reply_text || '' });
+  saveHistory(history2);
 
   if(data.reply_audio_b64){
     setTop('ready','Speaking');

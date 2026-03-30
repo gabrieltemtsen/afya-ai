@@ -81,10 +81,20 @@ async def voice_api(payload: dict = Body(...)):
     """Voice-to-voice endpoint.
 
     Input:
-      { audio_b64: string, mime_type: string, lang_hint?: string }
+      {
+        audio_b64: string,
+        mime_type: string,
+        lang_hint?: string,
+        history?: Array<{ role: "user"|"assistant", text: string }>
+      }
 
     Output:
-      { transcript: string, reply_text: string, reply_audio_b64?: string, reply_mime_type?: string }
+      {
+        detected_language?: string,
+        reply_text: string,
+        reply_audio_b64?: string,
+        reply_mime_type?: string
+      }
     """
     if not GEMINI_API_KEY:
         return {"error": "GEMINI_API_KEY not set"}
@@ -92,6 +102,7 @@ async def voice_api(payload: dict = Body(...)):
     audio_b64 = payload.get("audio_b64")
     mime_type = payload.get("mime_type") or "audio/webm"
     lang_hint = (payload.get("lang_hint") or "").strip()
+    history = payload.get("history") or []
 
     if not audio_b64:
         return {"error": "Missing audio_b64"}
@@ -100,12 +111,31 @@ async def voice_api(payload: dict = Body(...)):
 
     client = genai.Client(api_key=GEMINI_API_KEY)
 
-    # 1) Transcribe + triage in one shot (fast)
+    # Build lightweight context from last turns
+    context_lines: list[str] = []
+    for h in history[-8:]:
+        role = h.get("role")
+        text = (h.get("text") or "").strip()
+        if not role or not text:
+            continue
+        prefix = "User" if role == "user" else "AfyaAI"
+        context_lines.append(f"{prefix}: {text}")
+    context = "\n".join(context_lines)
+
+    # 1) Transcribe + triage in one shot.
+    # Ask for JSON so we can reliably capture detected language.
     user_prompt = (
-        "Transcribe the user's audio, then answer as AfyaAI with triage guidance. "
-        "Reply in the SAME language the user spoke. "
-        + (f"Language hint: {lang_hint}. " if lang_hint else "")
-        + "Return ONLY plain text." 
+        "You will receive the user's AUDIO.\n"
+        "Task:\n"
+        "1) Detect the language/dialect the user is speaking (e.g., English, Nigerian Pidgin, Yoruba, Hausa, Igbo, Swahili, French).\n"
+        "2) Reply as AfyaAI with triage guidance.\n"
+        "Rules:\n"
+        "- Reply in the SAME language/dialect the user spoke.\n"
+        "- If the user speaks Nigerian Pidgin, reply in Nigerian Pidgin explicitly.\n"
+        "- Keep it short and practical.\n"
+        + (f"- Language hint from UI (may be empty/auto): {lang_hint}\n" if True else "")
+        + (f"Conversation so far:\n{context}\n" if context else "")
+        + "Return STRICT JSON only: {\"language\": string, \"reply\": string}."
     )
 
     resp = client.models.generate_content(
@@ -114,19 +144,28 @@ async def voice_api(payload: dict = Body(...)):
             {"role": "user", "parts": [
                 {"text": SYSTEM_PROMPT},
                 {"text": user_prompt},
-                # google-genai prefers bytes for inline_data.data
                 {"inline_data": {"mime_type": mime_type, "data": audio_bytes}},
             ]},
         ],
     )
 
-    reply_text = (getattr(resp, "text", None) or "").strip()
+    raw = (getattr(resp, "text", None) or "").strip()
+    detected_language = None
+    reply_text = raw
+
+    try:
+        obj = json.loads(raw)
+        detected_language = str(obj.get("language") or "").strip() or None
+        reply_text = str(obj.get("reply") or "").strip() or raw
+    except Exception:
+        # If model didn't follow JSON, keep raw text
+        pass
 
     # 2) TTS
     tts = generate_tts_audio_b64(client, MODEL_TTS, reply_text)
 
     return {
-        "transcript": "",  # we can add explicit transcript parsing later
+        "detected_language": detected_language,
         "reply_text": reply_text,
         "reply_audio_b64": tts.get("audio_b64"),
         "reply_mime_type": tts.get("mime_type"),
