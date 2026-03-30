@@ -62,15 +62,11 @@ async def voice_ws(websocket: WebSocket):
 
     client = genai.Client(api_key=GEMINI_API_KEY)
 
-    # Simple dict config — most compatible across SDK versions
+    # Keep config MINIMAL to avoid "invalid argument" from preview endpoints.
+    # We can add voice selection etc later once the session is stable.
     config = {
-        "response_modalities": ["AUDIO"],
+        "response_modalities": ["AUDIO", "TEXT"],
         "system_instruction": SYSTEM_PROMPT,
-        "speech_config": {
-            "voice_config": {
-                "prebuilt_voice_config": {"voice_name": "Aoede"}
-            }
-        },
     }
 
     try:
@@ -87,8 +83,11 @@ async def voice_ws(websocket: WebSocket):
 
                         if kind == "audio":
                             audio_bytes = base64.b64decode(msg["data"])
+                            rate = int(msg.get("rate") or 24000)
+                            mime = f"audio/pcm;rate={rate}"
+                            log.info(f"[ws] audio chunk bytes={len(audio_bytes)} rate={rate}")
                             await session.send_realtime_input(
-                                audio=types.Blob(data=audio_bytes, mime_type="audio/pcm;rate=24000")
+                                audio=types.Blob(data=audio_bytes, mime_type=mime)
                             )
 
                         elif kind == "image":
@@ -118,41 +117,41 @@ async def voice_ws(websocket: WebSocket):
             async def from_gemini():
                 try:
                     async for response in session.receive():
-                        # Audio
+                        # Some SDKs expose direct fields
                         if hasattr(response, "data") and response.data:
                             await websocket.send_text(json.dumps({
                                 "type": "audio",
                                 "data": base64.b64encode(response.data).decode(),
                             }))
 
-                        # Text transcript
                         if hasattr(response, "text") and response.text:
                             await websocket.send_text(json.dumps({
                                 "type": "transcript",
                                 "text": response.text,
                             }))
 
-                        # Server content (model_turn)
+                        # Most SDKs expose server_content.model_turn.parts
                         sc = getattr(response, "server_content", None)
                         if sc:
                             mt = getattr(sc, "model_turn", None)
                             if mt:
                                 for part in (mt.parts or []):
-                                    if hasattr(part, "inline_data") and part.inline_data:
-                                        await websocket.send_text(json.dumps({
-                                            "type": "audio",
-                                            "data": base64.b64encode(part.inline_data.data).decode(),
-                                        }))
-                                    if hasattr(part, "text") and part.text:
+                                    if getattr(part, "text", None):
                                         await websocket.send_text(json.dumps({
                                             "type": "transcript",
                                             "text": part.text,
+                                        }))
+                                    inline = getattr(part, "inline_data", None)
+                                    if inline and getattr(inline, "data", None):
+                                        await websocket.send_text(json.dumps({
+                                            "type": "audio",
+                                            "data": base64.b64encode(inline.data).decode(),
                                         }))
                             if getattr(sc, "turn_complete", False):
                                 await websocket.send_text(json.dumps({"type": "turn_complete"}))
 
                 except Exception as e:
-                    log.warning(f"from_gemini: {e}")
+                    log.exception(f"from_gemini: {e}")
 
             await asyncio.gather(from_browser(), from_gemini())
 
