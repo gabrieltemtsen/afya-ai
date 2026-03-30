@@ -19,7 +19,7 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("afya")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-MODEL = os.environ.get("GEMINI_LIVE_MODEL", "gemini-2.0-flash-live-001")
+MODEL = os.environ.get("GEMINI_LIVE_MODEL", "gemini-3.1-flash-live-preview")
 
 SYSTEM_PROMPT = """You are AfyaAI — a warm, compassionate voice-first AI health assistant for Africa.
 
@@ -88,14 +88,21 @@ async def voice_ws(websocket: WebSocket):
                         if kind == "audio":
                             audio_bytes = base64.b64decode(msg["data"])
                             await session.send_realtime_input(
-                                audio=types.Blob(data=audio_bytes, mime_type="audio/pcm;rate=16000")
+                                audio=types.Blob(data=audio_bytes, mime_type="audio/pcm;rate=24000")
                             )
 
                         elif kind == "image":
                             image_bytes = base64.b64decode(msg["data"])
-                            await session.send_realtime_input(
-                                video=types.Blob(data=image_bytes, mime_type=msg.get("mime_type", "image/jpeg"))
-                            )
+                            mime = msg.get("mime_type", "image/jpeg")
+                            # SDK naming varies; try image= first, fall back to video=
+                            try:
+                                await session.send_realtime_input(
+                                    image=types.Blob(data=image_bytes, mime_type=mime)
+                                )
+                            except TypeError:
+                                await session.send_realtime_input(
+                                    video=types.Blob(data=image_bytes, mime_type=mime)
+                                )
 
                         elif kind == "text":
                             await session.send(input=msg.get("text", ""), end_of_turn=True)
