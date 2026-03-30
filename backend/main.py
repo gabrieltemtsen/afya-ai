@@ -21,7 +21,7 @@ log = logging.getLogger("afya")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 # Use the latest live model — fall back gracefully
-MODEL = os.environ.get("GEMINI_LIVE_MODEL", "gemini-2.0-flash-live-001")
+MODEL = os.environ.get("GEMINI_LIVE_MODEL", "gemini-3.1-flash-live-preview")
 
 SYSTEM_PROMPT = """You are AfyaAI (Afya means "health" in Swahili) — a compassionate, voice-first AI health assistant built for communities across Africa where access to doctors is limited.
 
@@ -77,7 +77,10 @@ async def voice_ws(websocket: WebSocket):
         await websocket.close()
         return
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    client = genai.Client(
+        api_key=GEMINI_API_KEY,
+        http_options={"api_version": "v1alpha"},
+    )
 
     live_config = types.LiveConnectConfig(
         response_modalities=["AUDIO"],
