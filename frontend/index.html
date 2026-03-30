@@ -97,7 +97,7 @@
   <button id="cam">📷</button>
 </div>
 
-<div id="footer">⚕️ AI assistant only — not a substitute for professional medical care</div>
+<div id="footer">⚕️ AI assistant only — not a substitute for professional medical care · <span id="ver">stable</span></div>
 <input type="file" id="file" accept="image/*" capture="environment"/>
 
 <script>
@@ -266,6 +266,8 @@ fileInp.addEventListener('change', ()=>{
   fileInp.value='';
 });
 
+// show build timestamp to help cache debugging
+try { document.getElementById('ver').textContent = 'stable ' + new Date().toISOString().slice(11,19); } catch {}
 setupSpeech();
 </script>
 </body>
