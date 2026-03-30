@@ -12,14 +12,19 @@ from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Body
 from google import genai
 from google.genai import types
+
+from .stable_mode import generate_triage_text, generate_tts_audio_b64
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("afya")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-MODEL = os.environ.get("GEMINI_LIVE_MODEL", "gemini-3.1-flash-live-preview")
+MODEL_LIVE = os.environ.get("GEMINI_LIVE_MODEL", "gemini-3.1-flash-live-preview")
+MODEL_TEXT = os.environ.get("GEMINI_TEXT_MODEL", "gemini-2.5-flash")
+MODEL_TTS = os.environ.get("GEMINI_TTS_MODEL", "gemini-2.5-flash-preview-tts")
 
 SYSTEM_PROMPT = """You are AfyaAI — a warm, compassionate voice-first AI health assistant for Africa.
 
@@ -47,7 +52,33 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "model": MODEL, "key_set": bool(GEMINI_API_KEY)}
+    return {
+        "status": "ok",
+        "key_set": bool(GEMINI_API_KEY),
+        "models": {"live": MODEL_LIVE, "text": MODEL_TEXT, "tts": MODEL_TTS},
+    }
+
+
+@app.post("/api/chat")
+async def chat_api(payload: dict = Body(...)):
+    """Stable chat endpoint.
+
+    Input: { text: string, langHint?: string }
+    Output: { text: string, audio_b64?: string, mime_type?: string }
+    """
+    if not GEMINI_API_KEY:
+        return {"error": "GEMINI_API_KEY not set"}
+
+    text = (payload.get("text") or "").strip()
+    if not text:
+        return {"error": "Missing text"}
+
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    reply_text = generate_triage_text(client, MODEL_TEXT, SYSTEM_PROMPT, text)
+
+    # TTS is optional — if it fails, we still return text.
+    tts = generate_tts_audio_b64(client, MODEL_TTS, reply_text)
+    return {"text": reply_text, **tts}
 
 
 @app.websocket("/ws/voice")
@@ -70,8 +101,8 @@ async def voice_ws(websocket: WebSocket):
     }
 
     try:
-        async with client.aio.live.connect(model=MODEL, config=config) as session:
-            log.info(f"Gemini Live session open (model={MODEL})")
+        async with client.aio.live.connect(model=MODEL_LIVE, config=config) as session:
+            log.info(f"Gemini Live session open (model={MODEL_LIVE})")
             await websocket.send_text(json.dumps({"type": "ready"}))
 
             async def from_browser():
