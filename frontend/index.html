@@ -95,7 +95,9 @@
     <div class="status" id="sub" style="min-height:20px"></div>
   </div>
 
-  <audio id="player" controls></audio>
+  <div id="tapSound" style="display:none;width:min(520px,92vw);background:#0b1220;border:1px solid var(--border);border-radius:14px;padding:12px 14px;text-align:center;font-size:12px;color:var(--muted)">
+    Tap once to enable sound
+  </div>
 </main>
 
 <style>@keyframes dot{0%,100%{transform:translateY(0);opacity:.4}50%{transform:translateY(-4px);opacity:1}}</style>
@@ -107,7 +109,10 @@
 <script>
 const mic = document.getElementById('mic');
 const statusEl = document.getElementById('status');
-const player = document.getElementById('player');
+const tapSound = document.getElementById('tapSound');
+
+let audioCtx = null;
+let audioUnlocked = false;
 const dot = document.getElementById('dot');
 const stxt = document.getElementById('stxt');
 const lang = document.getElementById('lang');
@@ -236,10 +241,7 @@ async function stopRec(){
     setTop('ready','Speaking');
     setStatus('AfyaAI speaking…');
     orb.style.transform = 'scale(1.03)';
-    const wav = pcmB64ToWavUrl(data.reply_audio_b64, data.reply_mime_type || 'audio/pcm;rate=24000');
-    player.src = wav;
-    await player.play().catch(()=>{});
-    player.onended = () => { orb.style.transform='scale(1)'; };
+    await playPcmBase64(data.reply_audio_b64, data.reply_mime_type || 'audio/pcm;rate=24000');
   } else {
     setStatus('No voice returned (TTS missing)');
   }
@@ -257,13 +259,58 @@ function blobToBase64(blob){
   });
 }
 
-// Convert PCM base64 -> WAV blob URL for playback
-function pcmB64ToWavUrl(pcmB64, mime){
+async function ensureAudioUnlocked(){
+  if(audioUnlocked) return true;
+  try{
+    audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state==='suspended') await audioCtx.resume();
+
+    // iOS needs a sound to be played once
+    const buffer = audioCtx.createBuffer(1, 1, 24000);
+    const src = audioCtx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(audioCtx.destination);
+    src.start(0);
+    audioUnlocked = true;
+    tapSound.style.display='none';
+    return true;
+  } catch {
+    tapSound.style.display='block';
+    return false;
+  }
+}
+
+tapSound.addEventListener('click', async () => {
+  await ensureAudioUnlocked();
+});
+
+async function playPcmBase64(pcmB64, mime){
+  const ok = await ensureAudioUnlocked();
+  if(!ok){
+    showToast('Tap “enable sound” once');
+    return;
+  }
+
   const rate = mime.includes('16000') ? 16000 : 24000;
   const pcmBytes = base64ToBytes(pcmB64);
-  const wavBytes = pcmToWav(pcmBytes, rate);
-  const blob = new Blob([wavBytes], { type: 'audio/wav' });
-  return URL.createObjectURL(blob);
+  const n = pcmBytes.length/2;
+  const ctx = audioCtx;
+  const buf = ctx.createBuffer(1, n, rate);
+  const ch = buf.getChannelData(0);
+  const dv = new DataView(pcmBytes.buffer, pcmBytes.byteOffset, pcmBytes.byteLength);
+  for(let i=0;i<n;i++) ch[i] = dv.getInt16(i*2,true)/32768;
+
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ctx.destination);
+  src.onended = () => { orb.style.transform='scale(1)'; setTop('ready','Ready'); setStatus('Hold to talk'); };
+
+  // speaking UI
+  orb.style.transform='scale(1.06)';
+  setTop('ready','Speaking');
+  setStatus('AfyaAI speaking…');
+
+  src.start();
 }
 
 function base64ToBytes(b64){
@@ -273,42 +320,7 @@ function base64ToBytes(b64){
   return bytes;
 }
 
-function pcmToWav(pcmBytes, sampleRate){
-  const numChannels=1;
-  const bitsPerSample=16;
-  const byteRate = sampleRate*numChannels*bitsPerSample/8;
-  const blockAlign = numChannels*bitsPerSample/8;
-  const dataSize = pcmBytes.length;
-  const buffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(buffer);
-
-  // RIFF header
-  writeStr(view, 0, 'RIFF');
-  view.setUint32(4, 36 + dataSize, true);
-  writeStr(view, 8, 'WAVE');
-
-  // fmt chunk
-  writeStr(view, 12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // PCM
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, byteRate, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, bitsPerSample, true);
-
-  // data chunk
-  writeStr(view, 36, 'data');
-  view.setUint32(40, dataSize, true);
-
-  // PCM data
-  new Uint8Array(buffer, 44).set(pcmBytes);
-  return buffer;
-}
-
-function writeStr(view, offset, str){
-  for(let i=0;i<str.length;i++) view.setUint8(offset+i, str.charCodeAt(i));
-}
+// legacy WAV helpers removed (we now play PCM directly via WebAudio)
 
 mic.addEventListener('mousedown', startRec);
 mic.addEventListener('mouseup', stopRec);

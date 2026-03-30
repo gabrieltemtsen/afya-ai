@@ -150,12 +150,15 @@ async def voice_api(payload: dict = Body(...)):
 
     # 2) Generate reply using history + transcript
     user_prompt = (
-        "Conversation so far (if any):\n" + (context + "\n" if context else "") +
+        "You are continuing an ongoing conversation. Do NOT restart.\n"
+        "If you previously asked a question, use the user's latest answer to move forward.\n\n"
+        "Conversation so far (if any):\n" + (context + "\n" if context else "(none)\n") +
         "User just said (transcript):\n" + transcript + "\n\n" +
-        "Now reply as AfyaAI.\n"
+        "Now reply as AfyaAI with the NEXT best response.\n"
         "Rules:\n"
         "- Reply in the SAME language/dialect the user spoke.\n"
         "- If the user speaks Nigerian Pidgin, reply in Nigerian Pidgin explicitly.\n"
+        "- Ask at most ONE follow-up question unless emergency.\n"
         "- Keep it short and practical.\n"
         + (f"- Language hint from UI: {lang_hint}\n" if lang_hint else "") +
         "Return STRICT JSON only: {\"language\": string, \"reply\": string}."
