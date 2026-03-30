@@ -57,17 +57,23 @@
 </header>
 
 <main>
-  <div class="card">
-    <div class="hint">
-      Hold the mic, speak naturally, then release. AfyaAI will reply with voice.
+  <div class="card" style="text-align:center">
+    <div class="hint" style="margin-bottom:14px">
+      <b>Hold to talk.</b> Release to send. AfyaAI replies with voice.
       <br/>Tip: use earphones for the best experience.
+    </div>
+
+    <div id="orbWrap" style="display:flex;justify-content:center;margin:10px 0 14px">
+      <div id="orb" style="width:140px;height:140px;border-radius:999px;background:radial-gradient(circle at 30% 30%, var(--green2), var(--green));box-shadow:0 0 0 0 rgba(74,222,128,.25);display:flex;align-items:center;justify-content:center;font-size:40px">
+        🩺
+      </div>
     </div>
 
     <div class="row">
       <select id="lang">
         <option value="">Auto-detect language</option>
-        <option value="en">English</option>
         <option value="pcm">Nigerian Pidgin</option>
+        <option value="en">English</option>
         <option value="yo">Yorùbá</option>
         <option value="ha">Hausa</option>
         <option value="ig">Igbo</option>
@@ -79,13 +85,14 @@
 
     <div class="status" id="status">Hold to talk</div>
     <div class="status" id="aiAnim" style="display:none">
-      <span style="display:inline-flex;gap:4px;align-items:center">
+      <span style="display:inline-flex;gap:4px;align-items:center;justify-content:center">
         <span style="width:6px;height:6px;border-radius:999px;background:var(--green);opacity:.6;animation:dot 1.2s infinite"></span>
         <span style="width:6px;height:6px;border-radius:999px;background:var(--green);opacity:.6;animation:dot 1.2s .2s infinite"></span>
         <span style="width:6px;height:6px;border-radius:999px;background:var(--green);opacity:.6;animation:dot 1.2s .4s infinite"></span>
         <span style="margin-left:6px;color:var(--muted)">AfyaAI responding…</span>
       </span>
     </div>
+    <div class="status" id="sub" style="min-height:20px"></div>
   </div>
 
   <audio id="player" controls></audio>
@@ -107,6 +114,8 @@ const lang = document.getElementById('lang');
 const toast = document.getElementById('toast');
 const aiAnim = document.getElementById('aiAnim');
 const langBadge = document.getElementById('langBadge');
+const orb = document.getElementById('orb');
+const sub = document.getElementById('sub');
 
 // lightweight localStorage context
 const HISTORY_KEY = 'afya_voice_history_v1';
@@ -139,9 +148,12 @@ async function startRec(){
   if(holding) return;
   holding=true;
   setTop('rec','Recording');
-  setStatus('Recording… release to send');
+  setStatus('Listening… release to send');
   mic.classList.add('on');
   mic.textContent='🔴';
+  sub.textContent='';
+  // orb pulse
+  orb.style.animation = 'rip 1s infinite';
 
   stream = await navigator.mediaDevices.getUserMedia({ audio:true, video:false });
   const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
@@ -156,8 +168,10 @@ async function stopRec(){
   holding=false;
   mic.classList.remove('on');
   mic.textContent='🎤';
+  orb.style.animation = 'none';
   setTop('ready','Processing');
   setStatus('Processing…');
+  aiAnim.style.display='block';
 
   const rec = recorder;
   recorder=null;
@@ -202,18 +216,30 @@ async function stopRec(){
     langBadge.textContent = `· ${data.detected_language}`;
   }
 
-  // save context (we don't show chat, but we remember it)
+  // save context using REAL transcript
   const history2 = loadHistory();
-  history2.push({ role:'user', text:'(voice message)' });
+  if(data.transcript){
+    history2.push({ role:'user', text: data.transcript });
+    sub.textContent = data.transcript;
+  } else {
+    history2.push({ role:'user', text:'(voice message)' });
+  }
   history2.push({ role:'assistant', text: data.reply_text || '' });
   saveHistory(history2);
+
+  // show subtitles for assistant
+  if(data.reply_text){
+    sub.textContent = data.reply_text;
+  }
 
   if(data.reply_audio_b64){
     setTop('ready','Speaking');
     setStatus('AfyaAI speaking…');
+    orb.style.transform = 'scale(1.03)';
     const wav = pcmB64ToWavUrl(data.reply_audio_b64, data.reply_mime_type || 'audio/pcm;rate=24000');
     player.src = wav;
     await player.play().catch(()=>{});
+    player.onended = () => { orb.style.transform='scale(1)'; };
   } else {
     setStatus('No voice returned (TTS missing)');
   }

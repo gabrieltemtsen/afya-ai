@@ -122,43 +122,61 @@ async def voice_api(payload: dict = Body(...)):
         context_lines.append(f"{prefix}: {text}")
     context = "\n".join(context_lines)
 
-    # 1) Transcribe + triage in one shot.
-    # Ask for JSON so we can reliably capture detected language.
+    # 1) Transcribe first (gives us real memory + better language detection)
+    transcribe_prompt = (
+        "Transcribe the user's AUDIO to plain text. "
+        "If you can infer the spoken language/dialect, prepend it like: [LANG=...] then the transcript. "
+        "Be faithful; don't add new information."
+    )
+
+    tr = client.models.generate_content(
+        model=MODEL_TEXT,
+        contents=[{"role": "user", "parts": [
+            {"text": transcribe_prompt},
+            {"inline_data": {"mime_type": mime_type, "data": audio_bytes}},
+        ]}],
+    )
+    transcript_raw = (getattr(tr, "text", None) or "").strip()
+
+    detected_language = None
+    transcript = transcript_raw
+    if transcript_raw.startswith("[LANG=") and "]" in transcript_raw:
+        try:
+            tag = transcript_raw.split("]", 1)[0]
+            detected_language = tag.replace("[LANG=", "").strip() or None
+            transcript = transcript_raw.split("]", 1)[1].strip()
+        except Exception:
+            transcript = transcript_raw
+
+    # 2) Generate reply using history + transcript
     user_prompt = (
-        "You will receive the user's AUDIO.\n"
-        "Task:\n"
-        "1) Detect the language/dialect the user is speaking (e.g., English, Nigerian Pidgin, Yoruba, Hausa, Igbo, Swahili, French).\n"
-        "2) Reply as AfyaAI with triage guidance.\n"
+        "Conversation so far (if any):\n" + (context + "\n" if context else "") +
+        "User just said (transcript):\n" + transcript + "\n\n" +
+        "Now reply as AfyaAI.\n"
         "Rules:\n"
         "- Reply in the SAME language/dialect the user spoke.\n"
         "- If the user speaks Nigerian Pidgin, reply in Nigerian Pidgin explicitly.\n"
         "- Keep it short and practical.\n"
-        + (f"- Language hint from UI (may be empty/auto): {lang_hint}\n" if True else "")
-        + (f"Conversation so far:\n{context}\n" if context else "")
-        + "Return STRICT JSON only: {\"language\": string, \"reply\": string}."
+        + (f"- Language hint from UI: {lang_hint}\n" if lang_hint else "") +
+        "Return STRICT JSON only: {\"language\": string, \"reply\": string}."
     )
 
     resp = client.models.generate_content(
         model=MODEL_TEXT,
-        contents=[
-            {"role": "user", "parts": [
-                {"text": SYSTEM_PROMPT},
-                {"text": user_prompt},
-                {"inline_data": {"mime_type": mime_type, "data": audio_bytes}},
-            ]},
-        ],
+        contents=[{"role": "user", "parts": [
+            {"text": SYSTEM_PROMPT},
+            {"text": user_prompt},
+        ]}],
     )
 
     raw = (getattr(resp, "text", None) or "").strip()
-    detected_language = None
     reply_text = raw
 
     try:
         obj = json.loads(raw)
-        detected_language = str(obj.get("language") or "").strip() or None
+        detected_language = str(obj.get("language") or detected_language or "").strip() or detected_language
         reply_text = str(obj.get("reply") or "").strip() or raw
     except Exception:
-        # If model didn't follow JSON, keep raw text
         pass
 
     # 2) TTS
@@ -166,6 +184,7 @@ async def voice_api(payload: dict = Body(...)):
 
     return {
         "detected_language": detected_language,
+        "transcript": transcript,
         "reply_text": reply_text,
         "reply_audio_b64": tts.get("audio_b64"),
         "reply_mime_type": tts.get("mime_type"),
