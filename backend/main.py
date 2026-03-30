@@ -13,6 +13,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from google import genai
+from google.genai import types
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("afya")
@@ -87,13 +88,13 @@ async def voice_ws(websocket: WebSocket):
                         if kind == "audio":
                             audio_bytes = base64.b64decode(msg["data"])
                             await session.send_realtime_input(
-                                audio={"data": audio_bytes, "mime_type": "audio/pcm;rate=16000"}
+                                audio=types.Blob(data=audio_bytes, mime_type="audio/pcm;rate=16000")
                             )
 
                         elif kind == "image":
                             image_bytes = base64.b64decode(msg["data"])
                             await session.send_realtime_input(
-                                video={"data": image_bytes, "mime_type": msg.get("mime_type", "image/jpeg")}
+                                video=types.Blob(data=image_bytes, mime_type=msg.get("mime_type", "image/jpeg"))
                             )
 
                         elif kind == "text":
