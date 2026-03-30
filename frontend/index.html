@@ -4,10 +4,10 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
-  <title>AfyaAI — Health Assistant</title>
+  <title>AfyaAI — Voice Health Assistant</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-    :root{--green:#16a34a;--green2:#4ade80;--red:#ef4444;--amber:#f59e0b;--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--muted2:#484f58}
+    :root{--green:#16a34a;--green2:#4ade80;--red:#ef4444;--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--muted2:#484f58}
     html,body{height:100%;overflow:hidden}
     body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column;height:100dvh}
 
@@ -16,50 +16,34 @@
     header h1{font-size:17px;font-weight:700;line-height:1.1}
     header p{font-size:11px;color:var(--muted);margin-top:1px}
     .pill{margin-left:auto;display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);font-size:11px;color:var(--muted);flex-shrink:0}
-    .dot{width:7px;height:7px;border-radius:50%;background:var(--muted2);transition:all .3s}
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--muted2)}
     .dot.ready{background:var(--green);box-shadow:0 0 0 2px rgba(22,163,74,.25)}
-    .dot.listening{background:#60a5fa;box-shadow:0 0 0 2px rgba(96,165,250,.25)}
-    .dot.speaking{background:#a78bfa;box-shadow:0 0 0 2px rgba(167,139,250,.25)}
-    .dot.error{background:var(--red)}
+    .dot.rec{background:var(--red);box-shadow:0 0 0 2px rgba(239,68,68,.25)}
 
-    #chat{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth}
-    #chat::-webkit-scrollbar{width:3px}
-    #chat::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+    main{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:16px;padding:20px}
+    .card{width:min(520px,92vw);background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px}
+    .hint{color:var(--muted);font-size:13px;line-height:1.55}
 
-    .welcome{align-self:center;text-align:center;max-width:290px;padding:28px 16px}
-    .welcome .icon{font-size:44px;margin-bottom:12px}
-    .welcome h2{font-size:17px;font-weight:700;margin-bottom:6px}
-    .welcome p{font-size:13px;color:var(--muted);line-height:1.6}
-    .langs{margin-top:12px;display:flex;flex-wrap:wrap;gap:5px;justify-content:center}
-    .lang-tag{font-size:11px;padding:3px 10px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
+    .row{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-top:14px}
+    select{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px 12px;font-size:13px;outline:none}
 
-    .msg{max-width:80%;padding:10px 13px;border-radius:16px;font-size:14px;line-height:1.55;animation:up .18s ease;word-break:break-word}
-    @keyframes up{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
-    .msg.ai{background:var(--card);border:1px solid var(--border);align-self:flex-start;border-bottom-left-radius:4px}
-    .msg.user{background:var(--green);align-self:flex-end;border-bottom-right-radius:4px}
-    .msg.system{align-self:center;font-size:11px;color:var(--muted);background:transparent;border:1px solid var(--border);border-radius:999px;padding:4px 12px}
-    .msg.err{align-self:center;font-size:12px;color:#fca5a5;background:#1a0a0a;border:1px solid #5a1a1a;border-radius:10px;padding:8px 14px;max-width:90%}
+    .mic{
+      width:86px;height:86px;border-radius:50%;border:none;cursor:pointer;
+      background:var(--green);color:#fff;font-size:28px;
+      display:flex;align-items:center;justify-content:center;
+      transition:transform .1s,background .2s;box-shadow:0 10px 30px rgba(22,163,74,.28);
+    }
+    .mic:active{transform:scale(.94)}
+    .mic.on{background:var(--red);box-shadow:0 0 0 0 rgba(239,68,68,.5);animation:rip 1s infinite}
+    @keyframes rip{0%{box-shadow:0 0 0 0 rgba(239,68,68,.45)}100%{box-shadow:0 0 0 18px rgba(239,68,68,0)}}
 
-    .triage{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:2px 9px;border-radius:999px;margin-top:6px}
-    .t-mild{background:#0d2a17;color:#4ade80}
-    .t-mod{background:#2a1f00;color:#fcd34d}
-    .t-sev{background:#2a0a0a;color:#fca5a5}
+    .status{font-size:12px;color:var(--muted);text-align:center;margin-top:6px;min-height:18px}
 
-    .img-thumb{max-width:180px;border-radius:10px;margin-top:6px;display:block}
+    audio{width:min(520px,92vw)}
 
-    #controls{background:var(--card);border-top:1px solid var(--border);padding:12px 20px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-shrink:0}
-    select#lang{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px;cursor:pointer;outline:none;flex:1}
+    footer{padding:10px 14px;text-align:center;color:var(--muted2);font-size:10px;border-top:1px solid var(--border);background:var(--card)}
 
-    #mic{width:64px;height:64px;border-radius:50%;border:none;cursor:pointer;background:var(--green);color:#fff;font-size:24px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:transform .1s,background .2s;box-shadow:0 4px 16px rgba(22,163,74,.35)}
-    #mic:active{transform:scale(.92)}
-    #mic.on{background:var(--red);box-shadow:0 0 0 0 rgba(239,68,68,.5);animation:rip 1s infinite}
-    #mic.disabled{background:var(--muted2);box-shadow:none;cursor:not-allowed}
-    @keyframes rip{0%{box-shadow:0 0 0 0 rgba(239,68,68,.5)}100%{box-shadow:0 0 0 14px rgba(239,68,68,0)}}
-
-    #cam{width:44px;height:44px;border-radius:50%;border:1px solid var(--border);background:var(--bg);cursor:pointer;font-size:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-
-    #footer{text-align:center;font-size:10px;color:var(--muted2);padding:6px 12px 8px;background:var(--card);flex-shrink:0}
-    #file{display:none}
+    .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:110px;background:#0b1220;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:12px;font-size:12px;display:none;max-width:92vw}
   </style>
 </head>
 <body>
@@ -67,208 +51,211 @@
   <div class="logo">🏥</div>
   <div>
     <h1>AfyaAI</h1>
-    <p>AI Health Assistant</p>
+    <p>Voice → Voice health triage</p>
   </div>
-  <div class="pill"><div class="dot" id="dot"></div><span id="stxt">Loading…</span></div>
+  <div class="pill"><div class="dot ready" id="dot"></div><span id="stxt">Ready</span></div>
 </header>
 
-<div id="chat">
-  <div class="welcome" id="welcome">
-    <div class="icon">🎙️</div>
-    <h2>Talk to AfyaAI</h2>
-    <p>Hold the mic and speak. AfyaAI will reply with voice + text.</p>
-    <div class="langs">
-      <span class="lang-tag">English</span><span class="lang-tag">Pidgin</span><span class="lang-tag">Yorùbá</span>
-      <span class="lang-tag">Hausa</span><span class="lang-tag">Igbo</span><span class="lang-tag">Swahili</span><span class="lang-tag">Français</span>
+<main>
+  <div class="card">
+    <div class="hint">
+      Hold the mic, speak naturally, then release. AfyaAI will reply with voice.
+      <br/>Tip: use earphones for the best experience.
     </div>
+
+    <div class="row">
+      <select id="lang">
+        <option value="">Auto-detect language</option>
+        <option value="en">English</option>
+        <option value="pcm">Nigerian Pidgin</option>
+        <option value="yo">Yorùbá</option>
+        <option value="ha">Hausa</option>
+        <option value="ig">Igbo</option>
+        <option value="sw">Swahili</option>
+        <option value="fr">Français</option>
+      </select>
+      <button class="mic" id="mic">🎤</button>
+    </div>
+
+    <div class="status" id="status">Hold to talk</div>
   </div>
-</div>
 
-<div id="controls">
-  <select id="lang">
-    <option value="">Auto-detect language</option>
-    <option value="en-NG">English (NG)</option>
-    <option value="en-US">English (US)</option>
-    <option value="en-GB">English (UK)</option>
-    <option value="fr-FR">Français</option>
-    <option value="sw-KE">Swahili</option>
-  </select>
-  <button id="mic" class="disabled">🎤</button>
-  <button id="cam">📷</button>
-</div>
+  <audio id="player" controls></audio>
+</main>
 
-<div id="footer">⚕️ AI assistant only — not a substitute for professional medical care · <span id="ver">stable</span></div>
-<input type="file" id="file" accept="image/*" capture="environment"/>
+<div class="toast" id="toast"></div>
+
+<footer>⚕️ AI assistant only — not a substitute for professional medical care · stable voice-to-voice</footer>
 
 <script>
+const mic = document.getElementById('mic');
+const statusEl = document.getElementById('status');
+const player = document.getElementById('player');
 const dot = document.getElementById('dot');
 const stxt = document.getElementById('stxt');
-const micBtn = document.getElementById('mic');
-const camBtn = document.getElementById('cam');
-const fileInp = document.getElementById('file');
-const chat = document.getElementById('chat');
-const welcome = document.getElementById('welcome');
-const langSel = document.getElementById('lang');
+const lang = document.getElementById('lang');
+const toast = document.getElementById('toast');
 
-let recognition = null;
-let listening = false;
+let recorder=null, chunks=[], stream=null;
+let holding=false;
 
-function status(state, text){
-  dot.className = 'dot ' + state;
+function setTop(state, text){
   stxt.textContent = text;
+  dot.className = 'dot ' + (state==='rec' ? 'rec' : 'ready');
 }
 
-function addMsg(role, text, img){
-  if(welcome && welcome.parentNode) welcome.remove();
-  const d = document.createElement('div');
-  d.className = 'msg ' + role;
-  if(text){
-    d.textContent = text;
-    if(role==='ai'){
-      if(/hospital|emergency|immediately|ambulance/i.test(text)){
-        const t=document.createElement('div');t.className='triage t-sev';t.textContent='🔴 Go to hospital NOW';d.appendChild(t);
-      } else if(/clinic|health centre|see a doctor|within 24/i.test(text)){
-        const t=document.createElement('div');t.className='triage t-mod';t.textContent='🟡 Visit a clinic soon';d.appendChild(t);
-      } else if(/rest|drink water|home care|mild/i.test(text)){
-        const t=document.createElement('div');t.className='triage t-mild';t.textContent='🟢 Home care';d.appendChild(t);
-      }
-    }
-  }
-  if(img){const i=document.createElement('img');i.src=img;i.className='img-thumb';d.appendChild(i);}
-  chat.appendChild(d);
-  chat.scrollTop = chat.scrollHeight;
+function setStatus(t){ statusEl.textContent = t; }
+
+function showToast(t){
+  toast.textContent=t;
+  toast.style.display='block';
+  clearTimeout(window.__toastT);
+  window.__toastT=setTimeout(()=>toast.style.display='none', 2600);
 }
 
-function sysmsg(t){
-  const last=chat.lastElementChild;
-  if(last && last.classList.contains('system') && last.textContent===t) return;
-  const d=document.createElement('div');d.className='msg system';d.textContent=t;
-  chat.appendChild(d);chat.scrollTop=chat.scrollHeight;
+async function startRec(){
+  if(holding) return;
+  holding=true;
+  setTop('rec','Recording');
+  setStatus('Recording… release to send');
+  mic.classList.add('on');
+  mic.textContent='🔴';
+
+  stream = await navigator.mediaDevices.getUserMedia({ audio:true, video:false });
+  const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+  recorder = new MediaRecorder(stream, { mimeType: mime });
+  chunks=[];
+  recorder.ondataavailable = (e)=>{ if(e.data && e.data.size>0) chunks.push(e.data); };
+  recorder.start();
 }
 
-function errmsg(t){
-  const d=document.createElement('div');d.className='msg err';d.textContent='⚠ '+t;
-  chat.appendChild(d);chat.scrollTop=chat.scrollHeight;
-}
+async function stopRec(){
+  if(!holding) return;
+  holding=false;
+  mic.classList.remove('on');
+  mic.textContent='🎤';
+  setTop('ready','Processing');
+  setStatus('Processing…');
 
-async function postChat(text){
-  status('speaking','Thinking…');
-  const resp = await fetch('/api/chat',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ text })
-  });
-  const data = await resp.json();
-  if(data.error){
-    status('error','Error');
-    errmsg(data.error);
+  const rec = recorder;
+  recorder=null;
+  if(rec && rec.state !== 'inactive') rec.stop();
+
+  await new Promise(r=> setTimeout(r, 200));
+
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+
+  const blob = new Blob(chunks, { type: rec?.mimeType || 'audio/webm' });
+  chunks=[];
+
+  if(blob.size < 4000){
+    setTop('ready','Ready');
+    setStatus('Hold to talk');
+    showToast('Didn\'t catch that — hold mic a bit longer');
     return;
   }
-  addMsg('ai', data.text || '(no response)');
-  // Play TTS if provided; else fallback to browser speech
-  if(data.audio_b64){
-    sysmsg('🔊 AfyaAI is speaking — check volume');
-    playPcmBase64(data.audio_b64, data.mime_type || 'audio/pcm;rate=24000');
-  } else if('speechSynthesis' in window){
-    const u = new SpeechSynthesisUtterance(data.text || '');
-    window.speechSynthesis.speak(u);
+
+  const b64 = await blobToBase64(blob);
+
+  const resp = await fetch('/api/voice', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ audio_b64: b64, mime_type: blob.type, lang_hint: lang.value })
+  });
+
+  const data = await resp.json();
+  if(data.error){
+    setTop('ready','Error');
+    setStatus('Error: ' + data.error);
+    showToast('Error: ' + data.error);
+    return;
   }
-  status('ready','Ready');
+
+  if(data.reply_audio_b64){
+    setTop('ready','Speaking');
+    setStatus('AfyaAI speaking…');
+    const wav = pcmB64ToWavUrl(data.reply_audio_b64, data.reply_mime_type || 'audio/pcm;rate=24000');
+    player.src = wav;
+    await player.play().catch(()=>{});
+  } else {
+    setStatus('No voice returned (TTS missing)');
+  }
+
+  setTop('ready','Ready');
+  setStatus('Hold to talk');
 }
 
-function playPcmBase64(b64, mime){
-  const bytes = base64ToBytes(b64);
+function blobToBase64(blob){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onload=()=>resolve(String(r.result).split(',')[1]);
+    r.onerror=reject;
+    r.readAsDataURL(blob);
+  });
+}
+
+// Convert PCM base64 -> WAV blob URL for playback
+function pcmB64ToWavUrl(pcmB64, mime){
   const rate = mime.includes('16000') ? 16000 : 24000;
-  const ctx = new (window.AudioContext||window.webkitAudioContext)({ sampleRate: rate });
-  const n = bytes.length/2;
-  const buf = ctx.createBuffer(1, n, rate);
-  const ch = buf.getChannelData(0);
-  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  for(let i=0;i<n;i++) ch[i] = dv.getInt16(i*2,true)/32768;
-  const src = ctx.createBufferSource();
-  src.buffer = buf;
-  src.connect(ctx.destination);
-  src.start();
+  const pcmBytes = base64ToBytes(pcmB64);
+  const wavBytes = pcmToWav(pcmBytes, rate);
+  const blob = new Blob([wavBytes], { type: 'audio/wav' });
+  return URL.createObjectURL(blob);
 }
 
 function base64ToBytes(b64){
-  const s=atob(b64);const b=new Uint8Array(s.length);
-  for(let i=0;i<s.length;i++) b[i]=s.charCodeAt(i);
-  return b;
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+  return bytes;
 }
 
-function setupSpeech(){
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SR){
-    status('error','No Speech API');
-    errmsg('This browser does not support voice input. Use Chrome on Android, or we’ll add Telegram bot soon.');
-    return;
-  }
-  recognition = new SR();
-  recognition.interimResults = false;
-  recognition.maxAlternatives = 1;
-  recognition.continuous = false;
+function pcmToWav(pcmBytes, sampleRate){
+  const numChannels=1;
+  const bitsPerSample=16;
+  const byteRate = sampleRate*numChannels*bitsPerSample/8;
+  const blockAlign = numChannels*bitsPerSample/8;
+  const dataSize = pcmBytes.length;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
 
-  recognition.onstart = ()=>{
-    listening = true;
-    micBtn.classList.add('on');
-    micBtn.textContent = '🔴';
-    status('listening','Listening…');
-  };
+  // RIFF header
+  writeStr(view, 0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeStr(view, 8, 'WAVE');
 
-  recognition.onend = ()=>{
-    listening = false;
-    micBtn.classList.remove('on');
-    micBtn.textContent = '🎤';
-    if(dot.classList.contains('listening')) status('ready','Processing…');
-  };
+  // fmt chunk
+  writeStr(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitsPerSample, true);
 
-  recognition.onerror = (e)=>{
-    listening = false;
-    micBtn.classList.remove('on');
-    micBtn.textContent = '🎤';
-    status('error','Mic error');
-    errmsg('Voice input error: '+(e.error||'unknown'));
-  };
+  // data chunk
+  writeStr(view, 36, 'data');
+  view.setUint32(40, dataSize, true);
 
-  recognition.onresult = (e)=>{
-    const text = (e.results && e.results[0] && e.results[0][0] && e.results[0][0].transcript) ? e.results[0][0].transcript.trim() : '';
-    if(!text){ status('ready','Ready'); return; }
-    addMsg('user', text);
-    postChat(text).catch(err=>{ status('error','Error'); errmsg(String(err)); });
-  };
-
-  micBtn.classList.remove('disabled');
-  status('ready','Ready');
-  sysmsg('AfyaAI is ready — hold mic to speak');
+  // PCM data
+  new Uint8Array(buffer, 44).set(pcmBytes);
+  return buffer;
 }
 
-micBtn.addEventListener('mousedown', ()=>{
-  if(!recognition || listening || micBtn.classList.contains('disabled')) return;
-  recognition.lang = langSel.value || 'en-NG';
-  recognition.start();
-});
-micBtn.addEventListener('mouseup', ()=>{ if(recognition && listening) recognition.stop(); });
-micBtn.addEventListener('mouseleave', ()=>{ if(recognition && listening) recognition.stop(); });
-micBtn.addEventListener('touchstart', (ev)=>{ ev.preventDefault(); if(!recognition || listening) return; recognition.lang = langSel.value || 'en-NG'; recognition.start(); }, { passive:false });
-micBtn.addEventListener('touchend', (ev)=>{ ev.preventDefault(); if(recognition && listening) recognition.stop(); }, { passive:false });
+function writeStr(view, offset, str){
+  for(let i=0;i<str.length;i++) view.setUint8(offset+i, str.charCodeAt(i));
+}
 
-camBtn.addEventListener('click', ()=>fileInp.click());
-fileInp.addEventListener('change', ()=>{
-  const f=fileInp.files[0];
-  if(!f) return;
-  const r=new FileReader();
-  r.onload=()=>{
-    addMsg('user','📷 Photo uploaded (vision triage coming next)', r.result);
-    sysmsg('Vision analysis is next on the roadmap. For now, describe what you see/feel.');
-  };
-  r.readAsDataURL(f);
-  fileInp.value='';
-});
+mic.addEventListener('mousedown', startRec);
+mic.addEventListener('mouseup', stopRec);
+mic.addEventListener('mouseleave', stopRec);
+mic.addEventListener('touchstart', (e)=>{ e.preventDefault(); startRec(); }, {passive:false});
+mic.addEventListener('touchend', (e)=>{ e.preventDefault(); stopRec(); }, {passive:false});
 
-// show build timestamp to help cache debugging
-try { document.getElementById('ver').textContent = 'stable ' + new Date().toISOString().slice(11,19); } catch {}
-setupSpeech();
+// iOS: prevent accidental scroll
+mic.addEventListener('touchmove', (e)=>{ e.preventDefault(); }, {passive:false});
+
 </script>
 </body>
 </html>
