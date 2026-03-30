@@ -62,11 +62,7 @@ async def health():
 
 @app.post("/api/chat")
 async def chat_api(payload: dict = Body(...)):
-    """Stable chat endpoint.
-
-    Input: { text: string, langHint?: string }
-    Output: { text: string, audio_b64?: string, mime_type?: string }
-    """
+    """Stable chat endpoint (kept for debugging)."""
     if not GEMINI_API_KEY:
         return {"error": "GEMINI_API_KEY not set"}
 
@@ -76,10 +72,65 @@ async def chat_api(payload: dict = Body(...)):
 
     client = genai.Client(api_key=GEMINI_API_KEY)
     reply_text = generate_triage_text(client, MODEL_TEXT, SYSTEM_PROMPT, text)
-
-    # TTS is optional — if it fails, we still return text.
     tts = generate_tts_audio_b64(client, MODEL_TTS, reply_text)
     return {"text": reply_text, **tts}
+
+
+@app.post("/api/voice")
+async def voice_api(payload: dict = Body(...)):
+    """Voice-to-voice endpoint.
+
+    Input:
+      { audio_b64: string, mime_type: string, lang_hint?: string }
+
+    Output:
+      { transcript: string, reply_text: string, reply_audio_b64?: string, reply_mime_type?: string }
+    """
+    if not GEMINI_API_KEY:
+        return {"error": "GEMINI_API_KEY not set"}
+
+    audio_b64 = payload.get("audio_b64")
+    mime_type = payload.get("mime_type") or "audio/webm"
+    lang_hint = (payload.get("lang_hint") or "").strip()
+
+    if not audio_b64:
+        return {"error": "Missing audio_b64"}
+
+    audio_bytes = base64.b64decode(audio_b64)
+
+    client = genai.Client(api_key=GEMINI_API_KEY)
+
+    # 1) Transcribe + triage in one shot (fast)
+    user_prompt = (
+        "Transcribe the user's audio, then answer as AfyaAI with triage guidance. "
+        "Reply in the SAME language the user spoke. "
+        + (f"Language hint: {lang_hint}. " if lang_hint else "")
+        + "Return ONLY plain text." 
+    )
+
+    resp = client.models.generate_content(
+        model=MODEL_TEXT,
+        contents=[
+            {"role": "user", "parts": [
+                {"text": SYSTEM_PROMPT},
+                {"text": user_prompt},
+                # google-genai prefers bytes for inline_data.data
+                {"inline_data": {"mime_type": mime_type, "data": audio_bytes}},
+            ]},
+        ],
+    )
+
+    reply_text = (getattr(resp, "text", None) or "").strip()
+
+    # 2) TTS
+    tts = generate_tts_audio_b64(client, MODEL_TTS, reply_text)
+
+    return {
+        "transcript": "",  # we can add explicit transcript parsing later
+        "reply_text": reply_text,
+        "reply_audio_b64": tts.get("audio_b64"),
+        "reply_mime_type": tts.get("mime_type"),
+    }
 
 
 ENABLE_LIVE = os.environ.get("ENABLE_LIVE", "false").lower() == "true"
