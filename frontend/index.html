@@ -276,6 +276,8 @@ function connect(){
       sysmsg('AfyaAI is ready — hold mic to speak');
     } else if(m.type==='audio'){
       status('speaking','Speaking…');
+      // show a quick hint the first time
+      if(!window.__heardHint){ window.__heardHint=true; sysmsg('🔊 AfyaAI is speaking — check your volume'); }
       queueAudio(base64ToBytes(m.data));
     } else if(m.type==='transcript'){
       addMsg('ai',m.text);
@@ -309,16 +311,22 @@ function connect(){
 async function startRec(){
   if(recording||!ready)return;
   try{
-    audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
+    audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)();
     if(audioCtx.state==='suspended')await audioCtx.resume();
     stream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
     source=audioCtx.createMediaStreamSource(stream);
-    processor=audioCtx.createScriptProcessor(4096,1,1);
+
+    // Smaller buffer = lower latency
+    processor=audioCtx.createScriptProcessor(2048,1,1);
+    const inputRate = audioCtx.sampleRate;
+    const targetRate = 24000;
+
     processor.onaudioprocess=(ev)=>{
       if(!recording)return;
       const f32=ev.inputBuffer.getChannelData(0);
-      const pcm=f32ToI16(f32);
-      if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:'audio',data:bytesTo64(pcm)}));
+      const down = downsampleFloat32(f32, inputRate, targetRate);
+      const pcm=f32ToI16(down);
+      if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:'audio',data:bytesTo64(pcm),rate:targetRate}));
       animBars(f32);
     };
     source.connect(processor);
@@ -387,9 +395,29 @@ micBtn.addEventListener('touchstart',e=>{e.preventDefault();startRec();},{passiv
 micBtn.addEventListener('touchend',e=>{e.preventDefault();stopRec();},{passive:false});
 
 // ── Utils ───────────────────────────────────────────────────────
+function downsampleFloat32(buffer, inRate, outRate){
+  if(inRate===outRate) return buffer;
+  const ratio = inRate / outRate;
+  const newLen = Math.round(buffer.length / ratio);
+  const out = new Float32Array(newLen);
+  let offset=0;
+  for(let i=0;i<newLen;i++){
+    const next = Math.round((i+1)*ratio);
+    // simple average to reduce aliasing
+    let acc=0, count=0;
+    for(let j=Math.round(i*ratio); j<next && j<buffer.length; j++){
+      acc += buffer[j];
+      count++;
+    }
+    out[i] = count? acc/count : buffer[Math.min(buffer.length-1, Math.round(i*ratio))];
+    offset = next;
+  }
+  return out;
+}
+
 function f32ToI16(f){
   const b=new Int16Array(f.length);
-  for(let i=0;i<f.length;i++)b[i]=Math.max(-32768,Math.min(32767,f[i]*32767|0));
+  for(let i=0;i<f.length;i++)b[i]=Math.max(-32768,Math.min(32767,Math.round(f[i]*32767)));
   return new Uint8Array(b.buffer);
 }
 function base64ToBytes(b64){const s=atob(b64),b=new Uint8Array(s.length);for(let i=0;i<s.length;i++)b[i]=s.charCodeAt(i);return b;}
