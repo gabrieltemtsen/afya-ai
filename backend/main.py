@@ -16,7 +16,7 @@ from fastapi import Body
 from google import genai
 from google.genai import types
 
-from .stable_mode import generate_triage_text, generate_tts_audio_b64
+from stable_mode import generate_triage_text, generate_tts_audio_b64
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("afya")
